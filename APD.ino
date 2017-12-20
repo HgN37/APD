@@ -1,6 +1,7 @@
 #include <HLW8012.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include <EEPROM.h>
 
 /* CONSTANT DEFINES */
 const char* wifi_ssid = "BLACK";
@@ -32,6 +33,7 @@ PubSubClient mqttClient(espClient);
 HLW8012 hlw8012;
 uint32_t last_read = 0;
 bool config_done = false;
+bool calib_done = false;
 int adc;
 float current = 0;
 float voltage = 0;
@@ -60,9 +62,24 @@ void setup() {
   analogWriteRange(100);
   
   //! Setup HLW8012
+  EEPROM.begin(50);
+  uint32_t vCurrent = 0;
+  uint32_t vVoltage = 0;
+  uint32_t vPower = 0;
+  for(int i = 0; i < 4; i++) {
+    vCurrent <<= 8;
+    vVoltage <<= 8;
+    vPower <<= 8;
+    vCurrent |= (uint32_t)EEPROM.read(0x10 + i);
+    vVoltage |= (uint32_t)EEPROM.read(0x14 + i);
+      vPower |= (uint32_t)EEPROM.read(0x18 + i);
+  }
   hlw8012.begin(PIN_CF, PIN_CF1, PIN_SEL, CURRENT_MODE, false, 500000);
   hlw8012.setResistors(CURRENT_RESISTOR, VOLTAGE_RESISTOR_UPSTREAM, VOLTAGE_RESISTOR_DOWNSTREAM);
-
+  hlw8012.setCurrentMultiplier((float)(vCurrent / 100.0));
+  hlw8012.setVoltageMultiplier((float)(vVoltage / 100.0));
+  hlw8012.setPowerMultiplier((float)(vPower / 100.0));
+  EEPROM.end();
   //! Setup WiFi
   Serial.println("\nStart smart config");
   WiFi.stopSmartConfig();
@@ -96,18 +113,6 @@ void setup() {
   mqttClient.subscribe(mqtt_topic_rx);
   mqttClient.publish(mqtt_topic_tx, "reseted and connected");
   digitalWrite(PIN_LED, HIGH); // To inform that Init done
-
-  //! Calib
-  hlw8012.getActivePower();
-  hlw8012.setMode(MODE_CURRENT);
-  delay(2000);
-  hlw8012.getCurrent();
-  hlw8012.setMode(MODE_VOLTAGE);
-  delay(2000);
-  hlw8012.getVoltage();
-  hlw8012.expectedActivePower(260.0);
-  hlw8012.expectedVoltage(222.5);
-  hlw8012.expectedCurrent(1.207);
 }
 
 /* LOOP FUNCTION
@@ -120,6 +125,44 @@ void loop() {
   analogWrite(PIN_PWM, adc);
   if(buttonReadPressed() == true) {
     digitalWrite(PIN_RELAY, !digitalRead(4));
+    /*
+    //! Calib
+    if(calib_done == false) {
+      Serial.println("Wait until stable");
+      delay(5000);
+      delay(5000);
+      Serial.println("Start calib");
+      hlw8012.getActivePower();
+      hlw8012.setMode(MODE_CURRENT);
+      delay(2000);
+      hlw8012.getCurrent();
+      hlw8012.setMode(MODE_VOLTAGE);
+      delay(2000);
+      hlw8012.getVoltage();
+      hlw8012.expectedActivePower(257.0);
+      hlw8012.expectedVoltage(226.0);
+      hlw8012.expectedCurrent(1.172);
+      Serial.println("Calib done, save to EEPROM");
+      uint32_t xCurrent = (uint32_t)(hlw8012.getCurrentMultiplier() * 100.0);
+      uint32_t xVoltage = (uint32_t)(hlw8012.getVoltageMultiplier() * 100.0);
+      uint32_t xPower = (uint32_t)(hlw8012.getPowerMultiplier() * 100);
+      EEPROM.begin(50);
+      EEPROM.write(0x10, (uint8_t)(xCurrent >> 24));
+      EEPROM.write(0x11, (uint8_t)(xCurrent >> 16));
+      EEPROM.write(0x12, (uint8_t)(xCurrent >> 8));
+      EEPROM.write(0x13, (uint8_t)(xCurrent >> 0));
+      EEPROM.write(0x14, (uint8_t)(xVoltage >> 24));
+      EEPROM.write(0x15, (uint8_t)(xVoltage >> 16));
+      EEPROM.write(0x16, (uint8_t)(xVoltage >> 8));
+      EEPROM.write(0x17, (uint8_t)(xVoltage >> 0));
+      EEPROM.write(0x18, (uint8_t)(xPower >> 24));
+      EEPROM.write(0x19, (uint8_t)(xPower >> 16));
+      EEPROM.write(0x1A, (uint8_t)(xPower >> 8));
+      EEPROM.write(0x1B, (uint8_t)(xPower >> 0));
+      EEPROM.commit();
+      EEPROM.end();
+      calib_done = true;
+    }*/
   }
   //! Read HLW
   if((millis() - last_read) > 2000) {
