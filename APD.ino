@@ -33,8 +33,11 @@ PubSubClient mqttClient(espClient);
 HLW8012 hlw8012;
 uint32_t last_read = 0;
 bool config_done = false;
+bool config_start = false;
 bool calib_done = false;
+uint32_t wifi_start = 0;
 int adc;
+int wifi_status = 0;
 float current = 0;
 float voltage = 0;
 float activePower = 0;
@@ -80,6 +83,7 @@ void setup() {
   hlw8012.setVoltageMultiplier((float)(vVoltage / 100.0));
   hlw8012.setPowerMultiplier((float)(vPower / 100.0));
   EEPROM.end();
+  /*
   //! Setup WiFi
   Serial.println("\nStart smart config");
   WiFi.stopSmartConfig();
@@ -111,8 +115,8 @@ void setup() {
     Serial.println("Fail to connect to server");
   }
   mqttClient.subscribe(mqtt_topic_rx);
-  mqttClient.publish(mqtt_topic_tx, "reseted and connected");
   digitalWrite(PIN_LED, HIGH); // To inform that Init done
+  */
 }
 
 /* LOOP FUNCTION
@@ -120,7 +124,53 @@ void setup() {
  *  - Read ADC to control PWM.
  */
 void loop() {
-  mqttClient.loop();
+  if(!mqttClient.connected()) {
+    digitalWrite(PIN_LED, LOW);
+    //! WiFi error
+    if(WiFi.status() != WL_CONNECTED) {
+      //! Not config yet
+      if(config_done == false) {
+        if(config_start == false) {
+          Serial.println("\nStart smart config");
+          WiFi.stopSmartConfig();
+          WiFi.mode(WIFI_STA);
+          WiFi.beginSmartConfig();
+          config_start = true;
+        }
+        else {
+          wifi_status = 1;
+          if(WiFi.smartConfigDone()) {
+            WiFi.stopSmartConfig();
+            Serial.println("Smart Config done");
+            config_done = true;
+          }
+        }
+      }
+      else {
+        wifi_status = 2;
+        if((millis() < 1000) | ((millis() - wifi_start) > 10000)) {
+          WiFi.begin();
+          WiFi.printDiag(Serial);
+          wifi_start = millis();
+        }
+      }
+    }
+    //! MQTT error
+    else {
+      wifi_status = 3;
+      if((millis() - wifi_start) > 2000) {
+        mqttClient.setServer(mqtt_server, mqtt_port);
+        mqttClient.setCallback(mqttCallback);
+        mqttClient.connect("hgnhgn");
+      }
+    }
+  }
+  else {
+    wifi_status = 4;
+    digitalWrite(PIN_LED, HIGH); // To inform that Init done
+    mqttClient.subscribe(mqtt_topic_rx);
+    mqttClient.loop();
+  }
   adc = (int)(analogRead(A0)*100/1024);
   analogWrite(PIN_PWM, adc);
   if(buttonReadPressed() == true) {
@@ -177,6 +227,7 @@ void loop() {
     hlw8012.toggleMode();
     last_read = millis();
     // Send HLW value to read
+    Serial.print("WiFi status   :"); Serial.println(wifi_status);
     Serial.print("Voltage       :"); Serial.println(voltage);
     Serial.print("Current       :"); Serial.println(current);
     Serial.print("Active Power  :"); Serial.println(activePower);
