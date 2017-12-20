@@ -31,6 +31,7 @@ WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 HLW8012 hlw8012;
 uint32_t last_read = 0;
+bool config_done = false;
 int adc;
 float current = 0;
 float voltage = 0;
@@ -63,7 +64,16 @@ void setup() {
   hlw8012.setResistors(CURRENT_RESISTOR, VOLTAGE_RESISTOR_UPSTREAM, VOLTAGE_RESISTOR_DOWNSTREAM);
 
   //! Setup WiFi
-  WiFi.begin(wifi_ssid, wifi_password);
+  Serial.println("\nStart smart config");
+  WiFi.stopSmartConfig();
+  WiFi.mode(WIFI_STA);
+  WiFi.beginSmartConfig();
+  while(!WiFi.smartConfigDone()) {
+    delay(100);
+  }
+  WiFi.stopSmartConfig();
+  Serial.println("Smart Config done");
+  WiFi.begin();
   WiFi.printDiag(Serial);
   Serial.println();
   while (WiFi.status() != WL_CONNECTED) {
@@ -86,6 +96,18 @@ void setup() {
   mqttClient.subscribe(mqtt_topic_rx);
   mqttClient.publish(mqtt_topic_tx, "reseted and connected");
   digitalWrite(PIN_LED, HIGH); // To inform that Init done
+
+  //! Calib
+  hlw8012.getActivePower();
+  hlw8012.setMode(MODE_CURRENT);
+  delay(2000);
+  hlw8012.getCurrent();
+  hlw8012.setMode(MODE_VOLTAGE);
+  delay(2000);
+  hlw8012.getVoltage();
+  hlw8012.expectedActivePower(260.0);
+  hlw8012.expectedVoltage(222.5);
+  hlw8012.expectedCurrent(1.207);
 }
 
 /* LOOP FUNCTION
@@ -93,36 +115,34 @@ void setup() {
  *  - Read ADC to control PWM.
  */
 void loop() {
-  while(1) {
-    mqttClient.loop();
-    adc = (int)(analogRead(A0)*100/1024);
-    analogWrite(PIN_PWM, adc);
-    if(buttonReadPressed() == true) {
-      digitalWrite(PIN_RELAY, !digitalRead(4));
-    }
-    //! Read HLW
-    if((millis() - last_read) > 2000) {
-      voltage = (float)hlw8012.getVoltage();
-      current = (float)hlw8012.getCurrent();
-      activePower = (float)hlw8012.getActivePower();
-      reactivePower = (float)hlw8012.getReactivePower();
-      aparentPower = (float)hlw8012.getApparentPower();
-      // This function switch between mode
-      // Need about 2s to make sure the value is stable
-      // So each time we get into the condition we only update 1 value, other values return the cache one.
-      hlw8012.toggleMode();
-      last_read = millis();
-      // Send HLW value to read
-      Serial.print("Voltage       :"); Serial.println(voltage);
-      Serial.print("Current       :"); Serial.println(current);
-      Serial.print("Active Power  :"); Serial.println(activePower);
-      Serial.print("Reactive Power:"); Serial.println(reactivePower);
-      Serial.print("Aparent Power :"); Serial.println(aparentPower);
-      Serial.println();
-    }
-    //! Just prevent watchdog timer reset
-    yield();
+  mqttClient.loop();
+  adc = (int)(analogRead(A0)*100/1024);
+  analogWrite(PIN_PWM, adc);
+  if(buttonReadPressed() == true) {
+    digitalWrite(PIN_RELAY, !digitalRead(4));
   }
+  //! Read HLW
+  if((millis() - last_read) > 2000) {
+    voltage = (float)hlw8012.getVoltage();
+    current = (float)hlw8012.getCurrent();
+    activePower = (float)hlw8012.getActivePower();
+    reactivePower = (float)hlw8012.getReactivePower();
+    aparentPower = (float)hlw8012.getApparentPower();
+    // This function switch between mode
+    // Need about 2s to make sure the value is stable
+    // So each time we get into the condition we only update 1 value, other values return the cache one.
+    hlw8012.toggleMode();
+    last_read = millis();
+    // Send HLW value to read
+    Serial.print("Voltage       :"); Serial.println(voltage);
+    Serial.print("Current       :"); Serial.println(current);
+    Serial.print("Active Power  :"); Serial.println(activePower);
+    Serial.print("Reactive Power:"); Serial.println(reactivePower);
+    Serial.print("Aparent Power :"); Serial.println(aparentPower);
+    Serial.println();
+  }
+  //! Just prevent watchdog timer reset
+  yield();
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
