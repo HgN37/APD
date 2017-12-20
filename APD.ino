@@ -1,7 +1,8 @@
+#include <HLW8012.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-/* Constant Define */
+/* CONSTANT DEFINES */
 const char* wifi_ssid = "BLACK";
 const char* wifi_password = "yoursolution";
 const char* mqtt_server = "iot.eclipse.org";
@@ -9,20 +10,58 @@ const int mqtt_port = 1883;
 const char* mqtt_topic_rx = "HGN37RX";
 const char* mqtt_topic_tx = "HGN37TX";
 
+/* GPIO DEFINES */
+#define PIN_LED    15
+#define PIN_BUTTON 2
+#define PIN_RELAY  4
+#define PIN_PWM    5
+#define PIN_SEL    12
+#define PIN_CF     14
+#define PIN_CF1    13
+
+/* HLW8012 DEFINE */
+#define CURRENT_MODE HIGH
+#define VOLTAGE_MODE LOW
+#define CURRENT_RESISTOR            (float)0.001
+#define VOLTAGE_RESISTOR_UPSTREAM   ( 5 * 470000 )
+#define VOLTAGE_RESISTOR_DOWNSTREAM ( 1000 )
+
+/* GLOBAL OBJECTS/VARIABLES */
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
+HLW8012 hlw8012;
+uint32_t last_read = 0;
+int adc;
+float current = 0;
+float voltage = 0;
+float activePower = 0;
+float reactivePower = 0;
+float aparentPower = 0;
 
-int x;
-
+/* SETUP FUNCTION
+ *  - Setup gpio input/output.
+ *  - Init Serial for debug.
+ *  - Init HLW8012.
+ *  - Connect to WiFi and MQTT broker.
+ */
 void setup() {
   //! Setup serial for debug
   Serial.begin(115200);
   while(!Serial) yield();
+  
   //! Setup output pin
-  pinMode(4, OUTPUT);
+  pinMode(PIN_RELAY, OUTPUT);
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, LOW); // Turn led off
+  pinMode(PIN_BUTTON, INPUT);
+  
   //! Setup PWM pin
   analogWriteRange(100);
- 
+  
+  //! Setup HLW8012
+  hlw8012.begin(PIN_CF, PIN_CF1, PIN_SEL, CURRENT_MODE, false, 500000);
+  hlw8012.setResistors(CURRENT_RESISTOR, VOLTAGE_RESISTOR_UPSTREAM, VOLTAGE_RESISTOR_DOWNSTREAM);
+
   //! Setup WiFi
   WiFi.begin(wifi_ssid, wifi_password);
   WiFi.printDiag(Serial);
@@ -46,11 +85,42 @@ void setup() {
   }
   mqttClient.subscribe(mqtt_topic_rx);
   mqttClient.publish(mqtt_topic_tx, "reseted and connected");
+  digitalWrite(PIN_LED, HIGH); // To inform that Init done
 }
 
+/* LOOP FUNCTION
+ *  - MQTT loop.
+ *  - Read ADC to control PWM.
+ */
 void loop() {
   while(1) {
     mqttClient.loop();
+    adc = (int)(analogRead(A0)*100/1024);
+    analogWrite(PIN_PWM, adc);
+    if(buttonReadPressed() == true) {
+      digitalWrite(PIN_RELAY, !digitalRead(4));
+    }
+    //! Read HLW
+    if((millis() - last_read) > 2000) {
+      voltage = (float)hlw8012.getVoltage();
+      current = (float)hlw8012.getCurrent();
+      activePower = (float)hlw8012.getActivePower();
+      reactivePower = (float)hlw8012.getReactivePower();
+      aparentPower = (float)hlw8012.getApparentPower();
+      // This function switch between mode
+      // Need about 2s to make sure the value is stable
+      // So each time we get into the condition we only update 1 value, other values return the cache one.
+      hlw8012.toggleMode();
+      last_read = millis();
+      // Send HLW value to read
+      Serial.print("Voltage       :"); Serial.println(voltage);
+      Serial.print("Current       :"); Serial.println(current);
+      Serial.print("Active Power  :"); Serial.println(activePower);
+      Serial.print("Reactive Power:"); Serial.println(reactivePower);
+      Serial.print("Aparent Power :"); Serial.println(aparentPower);
+      Serial.println();
+    }
+    //! Just prevent watchdog timer reset
     yield();
   }
 }
@@ -70,10 +140,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.println(data);
   if(cmd == "R") {
     if(data == 0) {
-      digitalWrite(4, HIGH);
+      digitalWrite(4, LOW);
     }
     else if(data == 100) {
-      digitalWrite(4, LOW);
+      digitalWrite(4, HIGH);
     }
   }
   else if(cmd == "C") {
@@ -83,4 +153,30 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     analogWrite(5, data);
   }
 }
+
+bool buttonReadPressed() {
+    static uint8_t vLastStatus = HIGH;
+    static uint32_t vLastPressed = 0;
+    static bool vPressed = false;
+    uint8_t reading = digitalRead(PIN_BUTTON);
+    if(reading == LOW) {
+        if(reading != vLastStatus) {
+            vLastPressed = millis();
+        }
+        else if((millis() - vLastPressed) > 150) {
+            if(vPressed == false) {
+                vPressed = true;
+                vLastStatus = reading;
+                return true;
+            }
+        }
+    }
+    else {
+        vPressed = false;
+    }
+    vLastStatus = reading;
+    return false;
+}
+
+
 
