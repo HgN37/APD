@@ -4,8 +4,8 @@
 #include "Arduino.h"
 #include "defineAll.h"
 
-void wifiConfig();
-void wifiConnect();
+int wifiConfig();
+int wifiConnect();
 void mqttConnect();
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 

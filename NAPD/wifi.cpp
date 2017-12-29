@@ -11,7 +11,7 @@ char mqttTopicSlave[25];
 
 String Get_macID (void);
 
-void wifiConfig() {
+int wifiConfig() {
   static int _state = 0;
   if(_state == 0) {
     Serial.println("Start smart config!!!");
@@ -27,35 +27,54 @@ void wifiConfig() {
     else {
       Serial.println("Smart Config done");
       WiFi.stopSmartConfig();
-      _state = 0;
+      _state = 2;
     }
   }
+  else if(_state == 2) {
+    _state = 0;
+  }
+  return _state;
 }
 
-void wifiConnect() {
-  static int _state = 2;
-  if(_state == 2) {
+int wifiConnect() {
+  static int _state = 0;
+  static uint32_t _led_delay = 0;
+  if(_state == 0) {
     Serial.println("Start connecting WiFi");
     WiFi.begin();
     WiFi.printDiag(Serial);
     Serial.println();
-    _state = 3;
+    _state = 1;
   }
-  else if(_state == 3) {
+  else if(_state == 1) {
     if(WiFi.status() != WL_CONNECTED) {
       delay(20);
     }
     else {
       Serial.println("WiFi connected");
-      _state = 4;
-    }
-  }
-  else if(_state == 4) {
-    if(WiFi.status() != WL_CONNECTED) {
-      Serial.println("WiFi disconnected");
       _state = 2;
     }
   }
+  else if(_state == 2) {
+    if(WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi disconnected");
+      _state = 0;
+    }
+  }
+  
+  if(_state == 0) {
+    ledControl(LOW);
+  }
+  else if(_state == 1) {
+    if((millis() - _led_delay) > 500) {
+      ledToggle();
+      _led_delay = millis();
+    }
+  }
+  else if(_state == 2) {
+    ledControl(HIGH);
+  }
+  return _state;
 }
 
 void mqttConnect() {
@@ -109,7 +128,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   mqtt_topic_tx.toCharArray(mqttTopicSlave, 24);
   if(func == "1") {
     ledPowerControl((uint8_t)(data.toInt()));
-    mqttClient.publish(mqttTopicSlave, payload);
+    //mqttClient.publish(mqttTopicSlave, payload);
   }
 }
 
