@@ -63,7 +63,9 @@ void loop() {
       mqttPublish(mqttCreateJson("0", String(pwm_value)));
     }
     else if(mqttGetFunc() == "1") {
-      ledPowerControl((uint8_t)(mqttGetData().toInt()));
+      pwm_value = (uint8_t)(mqttGetData().toInt());
+      if(pwm_value > 100) pwm_value = 100;
+      ledPowerControl(pwm_value);
       mqttPublish(mqttCreateJson("1", mqttGetData()));
       flag_adc_enable = false;
     }

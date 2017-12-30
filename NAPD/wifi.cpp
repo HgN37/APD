@@ -16,6 +16,7 @@ String framePass = "";
 String Get_macID (void);
 
 int wifiConfig() {
+  ledControl(LOW);
   static int _state = 0;
   if(_state == 0) {
     Serial.println("Start smart config!!!");
