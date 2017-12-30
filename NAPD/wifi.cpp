@@ -8,6 +8,10 @@ WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 char mqttTopicMaster[25];
 char mqttTopicSlave[25];
+String frameFunc = "";
+String frameData = "";
+String frameMAC = "";
+String framePass = "";
 
 String Get_macID (void);
 
@@ -25,8 +29,8 @@ int wifiConfig() {
       delay(20);
     }
     else {
+      delay(20);
       Serial.println("Smart Config done");
-      WiFi.stopSmartConfig();
       _state = 2;
     }
   }
@@ -40,6 +44,7 @@ int wifiConnect() {
   static int _state = 0;
   static uint32_t _led_delay = 0;
   if(_state == 0) {
+    WiFi.stopSmartConfig();
     Serial.println("Start connecting WiFi");
     WiFi.begin();
     WiFi.printDiag(Serial);
@@ -95,7 +100,7 @@ void mqttConnect() {
         String mqtt_topic_rx = Get_macID() + "/master";
         mqtt_topic_rx.toCharArray(mqttTopicMaster, 24);
         mqttClient.subscribe(mqttTopicMaster);
-        Serial.println("MQTT Subscribed");
+        Serial.println("MQTT Topic Subscribed: " + mqtt_topic_rx);
         _state = 7;
       }
     }
@@ -122,14 +127,48 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   String data = root["DATA"];
   String mac = root["MACID"];
   String pass = root["PASS"];
-  if(pass != "8888") return;
-  // if(mac != Get_macID()) return;
+  frameFunc = func;
+  frameData = data;
+  frameMAC = mac;
+  framePass = pass;
+}
+
+String mqttGetFunc() {
+  return frameFunc;
+}
+
+String mqttGetData() {
+  return frameData;
+}
+
+String mqttGetMAC() {
+  return frameMAC;
+}
+
+String mqttGetPass() {
+  return framePass;
+}
+
+void mqttClearFrame() {
+  frameFunc = "";
+  frameData = "";
+  frameMAC = "";
+  framePass = "";
+}
+
+void mqttPublish(String pJsonOut) {
+  char _dataOut[100];
+  pJsonOut.toCharArray(_dataOut, pJsonOut.length() + 1);
   String mqtt_topic_tx = Get_macID() + "/slave";
   mqtt_topic_tx.toCharArray(mqttTopicSlave, 24);
-  if(func == "1") {
-    ledPowerControl((uint8_t)(data.toInt()));
-    //mqttClient.publish(mqttTopicSlave, payload);
-  }
+  mqttClient.publish(mqttTopicSlave, _dataOut);
+  Serial.println("Send to " + mqtt_topic_tx + ": " + pJsonOut);
+}
+
+String mqttCreateJson(String func, String data) {
+  String json;
+  json = "{\"FUNC\":\"" + func + "\",\"DATA\":\"" + data + "\",\"MAC\":\"" + Get_macID() + "\",\"PASS\":\"8888\"}";
+  return json;
 }
 
 String Get_macID (void)
