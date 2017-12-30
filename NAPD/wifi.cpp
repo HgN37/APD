@@ -184,6 +184,7 @@ String Get_macID (void)
       _val += '0' + String(_mac[i], HEX);
     else _val += String(_mac[i], HEX);
   }
+  _val.toUpperCase();
   return _val;
 }
 

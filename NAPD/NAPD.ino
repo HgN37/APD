@@ -10,6 +10,7 @@ uint8_t pwm_value = 0;
 uint8_t adc_value = 0;
 uint8_t adc_new = 0;
 int adc_diff;
+uint32_t autosend = 0;
 String json = "";
 String databig = "";
 
@@ -93,6 +94,23 @@ void loop() {
     else {
       mqttPublish(mqttCreateJson("3", ""));
     }
+  }
+
+  //! Send periodially
+  if((millis() - autosend) > 5000) {
+    databig = "{\"U\":\"";
+    databig += String(hlwGetVolage()) + "\",";
+    databig += "\"I\":\"";
+    databig += String(hlwGetCurrent()) + "\",";
+    databig += "\"P\":\"";
+    databig += String(hlwGetActivePower()) + "\",";
+    databig += "\"Q\":\"";
+    databig += String(hlwGetReactivePower()) + "\",";
+    databig += "\"S\":\"";
+    databig += String(hlwGetApparentPower()) + "\"}";
+    mqttPublish(mqttCreateJson("2", databig));
+    mqttPublish(mqttCreateJson("0", String(pwm_value)));
+    autosend = millis();
   }
 
   //! Reset MQTT frame
