@@ -45,7 +45,6 @@ int wifiConnect() {
   static int _state = 0;
   static uint32_t _led_delay = 0;
   if(_state == 0) {
-    WiFi.stopSmartConfig();
     Serial.println("Start connecting WiFi");
     WiFi.begin();
     WiFi.printDiag(Serial);
@@ -119,9 +118,11 @@ void mqttConnect() {
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   String msg = "";
+  Serial.println("Receive from topic: " + String(topic));
   for (int i = 0; i < length; i++) {
     msg += String((char)payload[i]);
   }
+  Serial.println("Msg: " + msg);
   DynamicJsonBuffer _jsonBuffer;
   JsonObject& root = _jsonBuffer.parseObject(msg);
   String func = root["FUNC"];

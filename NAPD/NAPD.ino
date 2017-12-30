@@ -1,3 +1,4 @@
+#include <ESP8266WiFi.h>
 #include "led.h"
 #include "button.h"
 #include "wifi.h"
@@ -32,6 +33,13 @@ void loop() {
   }
   if(true == buttonReadPressed()) {
     flag_config = !flag_config;
+    WiFi.stopSmartConfig();
+    if(flag_config == true) {
+      ledControl(LOW);
+    }
+    else {
+      ledControl(HIGH);
+    }
   }
   
   //!  Read ADC to control
